@@ -39,10 +39,8 @@ The app is configured for **static export** and **Firebase Hosting** with automa
    git push -u origin main
    ```
 
-2. **Add Firebase secret** so GitHub Actions can deploy:
-   - Run locally: `npx firebase init hosting:github` and follow the prompts (it will create a service account and add the secret to your repo), **or**
-   - Manually: [Create a service account](https://firebase.google.com/docs/hosting/github-integration#set_up_a_service_account) in Firebase Console → IAM → Service accounts, then add its JSON key as a **GitHub repository secret** named `FIREBASE_SERVICE_ACCOUNT` (Settings → Secrets and variables → Actions).
+2. **Firebase secret**: Add a GitHub repository secret named `FIREBASE_SERVICE_ACCOUNT` with the **nexuscoder** Firebase project’s service account JSON (Firebase Console → Project settings → Service accounts → Generate new private key). For the CLI: run `npx firebase init hosting:github` and choose project **nexuscoder** to create and upload the secret.
 
-3. **Deploy**: Pushing to the `main` branch triggers the workflow and deploys to Firebase Hosting. Your site will be at `https://rabies-10776.web.app` (or your project’s Hosting URL).
+3. **Deploy**: Pushing to the `main` branch triggers the workflow and deploys to Firebase Hosting at **https://nexuscoder.web.app**.
 
 Optional: copy `.env.example` to `.env.local` and fill in Firebase config if you add Analytics or other client SDKs later.
