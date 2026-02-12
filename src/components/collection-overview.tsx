@@ -156,9 +156,12 @@ export function CollectionOverview({
         </CardContent>
       </Card>
 
-      {/* Endpoints List by Folder */}
       {collection.folderTree.map((folder) => (
-        <Card key={folder.path.length ? folder.path.join("/") : folder.name}>
+        <Card
+          key={folder.path.length ? folder.path.join("/") : folder.name}
+          id={`folder-${folder.path.length ? folder.path.join("-") : folder.name}`}
+          className="scroll-mt-20"
+        >
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between gap-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">

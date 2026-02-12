@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { FileUpload } from "@/components/file-upload";
 import { SearchCommand } from "@/components/search-command";
 import { SidebarNav } from "@/components/sidebar-nav";
@@ -238,7 +238,37 @@ export default function Home() {
         <div className="flex-1 flex justify-center px-4">
           <SearchCommand
             endpoints={collection.endpoints}
-            onSelect={handleSelectEndpoint}
+            folders={useMemo(() => {
+              const flat: FolderNode[] = [];
+              const traverse = (nodes: FolderNode[]) => {
+                for (const node of nodes) {
+                  flat.push(node);
+                  if (node.children.length) traverse(node.children);
+                }
+              };
+              traverse(collection.folderTree);
+              return flat;
+            }, [collection.folderTree])}
+            onSelect={(item) => {
+              if ("method" in item) {
+                // It's an endpoint
+                handleSelectEndpoint(item as ParsedEndpoint);
+              } else {
+                // It's a folder
+                setSelectedEndpoint(null);
+                setMobileSidebarOpen(false);
+                setTimeout(() => {
+                  // Find root parent name to scroll to the correct section
+                  const rootName = item.path.length > 0 ? item.path[0] : item.name;
+                  // Handle potential slugification if used in ID generation (currently raw name)
+                  const id = `folder-${rootName}`;
+                  const el = document.getElementById(id);
+                  if (el) {
+                    el.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }
+                }, 100);
+              }
+            }}
           />
         </div>
 
