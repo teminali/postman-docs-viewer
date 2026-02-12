@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
-import { Upload, FileJson, AlertCircle, Moon, Sun, History, KeyRound, User, LogOut, Settings, Github } from "lucide-react";
+import { Upload, FileJson, AlertCircle, Moon, Sun, History, KeyRound, User, LogOut, Settings, Github, Cloud } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ interface FileUploadProps {
   history?: HistoryEntry[];
   onSelectFromHistory?: (entry: HistoryEntry) => void;
   onOpenSettings?: () => void;
+  onOpenFirebaseDocs?: () => void;
 }
 
 export function FileUpload({
@@ -35,6 +36,7 @@ export function FileUpload({
   history = [],
   onSelectFromHistory,
   onOpenSettings,
+  onOpenFirebaseDocs,
 }: FileUploadProps) {
   const { theme, toggleTheme } = useTheme();
   const { user, loading: authLoading, signOut } = useAuth();
@@ -293,6 +295,31 @@ export function FileUpload({
             />
           </label>
         </Card>
+
+        {/* Firebase Docs */}
+        {onOpenFirebaseDocs && (
+          <div className="text-center">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">or</span>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              className="mt-4 gap-2"
+              onClick={onOpenFirebaseDocs}
+            >
+              <Cloud className="h-4 w-4" />
+              Browse Firebase Docs
+            </Button>
+            <p className="text-xs text-muted-foreground mt-2">
+              Load published API docs from Firebase with full viewer support
+            </p>
+          </div>
+        )}
 
         {/* Error */}
         {error && (

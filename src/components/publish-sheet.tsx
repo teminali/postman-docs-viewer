@@ -91,7 +91,7 @@ export function PublishSheet({
             Publish to Firebase
           </SheetTitle>
           <SheetDescription>
-            Save this API documentation to Firestore. Choose public (anyone with the link can view) or private (only you).
+            Save this API documentation to Firestore. Choose public (open to everyone) or private (requires sign-in to view).
           </SheetDescription>
         </SheetHeader>
 
@@ -169,8 +169,8 @@ export function PublishSheet({
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {visibility === "private"
-                    ? "Only you can view this doc (when signed in)."
-                    : "Anyone with the link can view this doc."}
+                    ? "Anyone with the link can view this doc after signing in."
+                    : "Anyone with the link can view this doc — no sign-in required."}
                 </p>
               </div>
             </>

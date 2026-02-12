@@ -1,5 +1,7 @@
 /**
- * Publish Postman collection docs to Firestore (and Storage for large payloads).
+ * Publish Postman collection docs to Firestore.
+ * Large payloads are split into Firestore subcollection chunks to avoid
+ * the ~1 MB document size limit and Firebase Storage CORS issues.
  * Public docs: anyone can read. Private docs: only owner.
  */
 
@@ -18,14 +20,16 @@ import {
   orderBy,
   deleteDoc,
   serverTimestamp,
+  writeBatch,
   type DocumentData,
   type Timestamp,
 } from "firebase/firestore";
-import { ref, uploadString, getDownloadURL } from "firebase/storage";
+import { ref, getBytes } from "firebase/storage";
 
 const FIRESTORE_COLLECTION = "published_docs";
-const STORAGE_PREFIX = "published_docs";
-const MAX_DOC_SIZE = 800000; // Firestore limit ~1MB; use Storage if larger
+const CHUNKS_SUBCOLLECTION = "chunks";
+const MAX_INLINE_SIZE = 800_000; // Store inline if JSON fits; chunk otherwise
+const CHUNK_SIZE = 750_000; // Each chunk ≤ 750 KB (safe margin under 1 MB limit)
 
 export type PublishVisibility = "public" | "private";
 
@@ -36,8 +40,10 @@ export interface PublishedDocMeta {
   name: string;
   description: string;
   visibility: PublishVisibility;
-  /** If set, full JSON is in Storage at this path */
+  /** @deprecated Legacy field — old docs stored large JSON in Firebase Storage */
   storagePath: string | null;
+  /** Number of Firestore chunks (0 = inline JSON, >0 = read from subcollection) */
+  chunkCount: number;
   endpointCount: number;
   folderCount: number;
   createdAt: Timestamp;
@@ -67,11 +73,21 @@ function docToPublishedDoc(id: string, data: DocumentData): PublishedDocMeta {
     description: data.description ?? "",
     visibility: (data.visibility as PublishVisibility) ?? "private",
     storagePath: data.storagePath ?? null,
+    chunkCount: data.chunkCount ?? 0,
     endpointCount: data.endpointCount ?? 0,
     folderCount: data.folderCount ?? 0,
     createdAt: data.createdAt as Timestamp,
     updatedAt: data.updatedAt as Timestamp,
   };
+}
+
+/** Split a string into chunks of at most `size` characters. */
+function splitIntoChunks(str: string, size: number): string[] {
+  const chunks: string[] = [];
+  for (let i = 0; i < str.length; i += size) {
+    chunks.push(str.slice(i, i + size));
+  }
+  return chunks;
 }
 
 /** Publish a collection. Returns the document ID. */
@@ -81,20 +97,12 @@ export async function publishDoc(
   input: PublishInput
 ): Promise<string> {
   const db = getFirestoreDb();
-  const storage = getFirebaseStorage();
   if (!db) throw new Error("Firestore is not configured");
 
   const docRef = doc(collection(db, FIRESTORE_COLLECTION));
   const id = docRef.id;
 
-  const useStorage = input.collectionJson.length > MAX_DOC_SIZE;
-  let storagePath: string | null = null;
-
-  if (useStorage && storage) {
-    storagePath = `${STORAGE_PREFIX}/${id}/collection.json`;
-    const storageRef = ref(storage, storagePath);
-    await uploadString(storageRef, input.collectionJson, "raw");
-  }
+  const needsChunking = input.collectionJson.length > MAX_INLINE_SIZE;
 
   const payload: DocumentData = {
     ownerId: userId,
@@ -102,15 +110,37 @@ export async function publishDoc(
     name: input.name,
     description: input.description,
     visibility: input.visibility,
-    storagePath,
-    collectionJson: useStorage ? null : input.collectionJson,
+    storagePath: null,
+    chunkCount: 0,
+    collectionJson: needsChunking ? null : input.collectionJson,
     endpointCount: input.endpointCount,
     folderCount: input.folderCount,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 
-  await setDoc(docRef, payload);
+  if (needsChunking) {
+    const chunks = splitIntoChunks(input.collectionJson, CHUNK_SIZE);
+    payload.chunkCount = chunks.length;
+
+    // 1. Write the parent doc first so it exists in the database
+    //    (Firestore rules `get()` reads pre-existing state, not batch state)
+    await setDoc(docRef, payload);
+
+    // 2. Then write all chunks — rules can now `get()` the parent doc
+    const batch = writeBatch(db);
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkRef = doc(
+        collection(db, FIRESTORE_COLLECTION, id, CHUNKS_SUBCOLLECTION),
+        String(i)
+      );
+      batch.set(chunkRef, { data: chunks[i], index: i });
+    }
+    await batch.commit();
+  } else {
+    await setDoc(docRef, payload);
+  }
+
   return id;
 }
 
@@ -151,7 +181,9 @@ export async function unpublishDoc(docId: string, userId: string): Promise<void>
   await deleteDoc(docRef);
 }
 
-/** Get a single published doc by ID. For public docs anyone can read; for private only owner. */
+/** Get a single published doc by ID.
+ *  - Public docs: anyone can read.
+ *  - Private docs: any signed-in user can read (shareable link). */
 export async function getPublishedDoc(
   docId: string,
   userId?: string | null
@@ -167,16 +199,41 @@ export async function getPublishedDoc(
   const data = snap.data();
   const meta = docToPublishedDoc(snap.id, data);
 
-  if (data.visibility === "private" && data.ownerId !== userId) {
+  // Private docs require sign-in (any account); public docs are open to all
+  if (data.visibility === "private" && !userId) {
     return null;
   }
 
   let collectionJson: string | null = data.collectionJson ?? null;
+
+  // Read from Firestore chunks (new format)
+  if (!collectionJson && (data.chunkCount ?? 0) > 0) {
+    const chunksSnap = await getDocs(
+      collection(db, FIRESTORE_COLLECTION, docId, CHUNKS_SUBCOLLECTION)
+    );
+    const sorted = chunksSnap.docs
+      .map((d) => ({ index: d.data().index as number, data: d.data().data as string }))
+      .sort((a, b) => a.index - b.index);
+    collectionJson = sorted.map((c) => c.data).join("");
+  }
+
+  // Legacy fallback: read from Firebase Storage (requires CORS config on bucket)
   if (!collectionJson && data.storagePath && storage) {
-    const storageRef = ref(storage, data.storagePath);
-    const url = await getDownloadURL(storageRef);
-    const res = await fetch(url);
-    collectionJson = await res.text();
+    try {
+      const storageRef = ref(storage, data.storagePath);
+      const bytes = await getBytes(storageRef);
+      collectionJson = new TextDecoder().decode(bytes);
+    } catch (err) {
+      console.warn(
+        "Failed to read from Firebase Storage (likely CORS). " +
+        "Run: gsutil cors set cors.json gs://<your-bucket> — see cors.json in project root.",
+        err
+      );
+      throw new Error(
+        "This doc is stored in Firebase Storage which requires CORS configuration. " +
+        "Please re-publish the doc to migrate it, or configure CORS on your Storage bucket."
+      );
+    }
   }
 
   return {

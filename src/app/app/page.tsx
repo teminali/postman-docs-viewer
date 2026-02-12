@@ -66,6 +66,7 @@ import {
   LogOut,
   Settings,
   CloudUpload,
+  Cloud,
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
@@ -74,6 +75,7 @@ import { AISettingsSheet } from "@/components/ai-settings-sheet";
 import { AIAssistantSheet } from "@/components/ai-assistant-sheet";
 import { FlowchartSheet } from "@/components/flowchart-sheet";
 import { PublishSheet } from "@/components/publish-sheet";
+import { FirebaseDocsSheet } from "@/components/firebase-docs-sheet";
 
 export default function Home() {
   const { theme, toggleTheme } = useTheme();
@@ -89,6 +91,7 @@ export default function Home() {
   const [aiAssistantOpen, setAIAssistantOpen] = useState(false);
   const [flowchartOpen, setFlowchartOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [firebaseDocsOpen, setFirebaseDocsOpen] = useState(false);
 
   // Restore current collection from browser storage on mount
   useEffect(() => {
@@ -183,8 +186,14 @@ export default function Home() {
           history={history}
           onSelectFromHistory={handleLoadFromHistory}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenFirebaseDocs={() => setFirebaseDocsOpen(true)}
         />
         <AISettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} />
+        <FirebaseDocsSheet
+          open={firebaseDocsOpen}
+          onOpenChange={setFirebaseDocsOpen}
+          onLoadCollection={handleFileLoaded}
+        />
       </>
     );
   }
@@ -501,6 +510,24 @@ export default function Home() {
           </DropdownMenu>
         )}
 
+        {/* Browse Firebase Docs */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setFirebaseDocsOpen(true)}
+              aria-label="Browse Firebase docs"
+            >
+              <Cloud className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            Browse Firebase docs
+          </TooltipContent>
+        </Tooltip>
+
         {/* Publish to Firebase (when signed in) */}
         {user && (
           <Tooltip>
@@ -558,6 +585,11 @@ export default function Home() {
       </header>
 
       <AISettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <FirebaseDocsSheet
+        open={firebaseDocsOpen}
+        onOpenChange={setFirebaseDocsOpen}
+        onLoadCollection={handleFileLoaded}
+      />
       {user && (
         <PublishSheet
           open={publishOpen}

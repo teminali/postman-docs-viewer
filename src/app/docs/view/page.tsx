@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { getPublishedDoc } from "@/lib/published-docs";
+import { setStoredCurrent, addToHistory } from "@/lib/collection-storage";
 import { parsePostmanCollection, type ParsedCollection } from "@/lib/postman-parser";
 import type { ParsedEndpoint, ViewMode, FolderNode } from "@/types/postman";
 import { CollectionOverview } from "@/components/collection-overview";
@@ -14,7 +15,7 @@ import { SidebarNav } from "@/components/sidebar-nav";
 import { SearchCommand } from "@/components/search-command";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileJson, Loader2, ChevronLeft, Code2, BookOpen, FileDown } from "lucide-react";
+import { FileJson, Loader2, ChevronLeft, Code2, BookOpen, FileDown, Maximize2, Lock } from "lucide-react";
 import {
   collectionToMarkdown,
   endpointToMarkdown,
@@ -28,7 +29,9 @@ function ViewPublishedDocContent() {
   const { user } = useAuth();
   const id = useMemo(() => searchParams.get("id"), [searchParams]);
 
+  const router = useRouter();
   const [collection, setCollection] = useState<ParsedCollection | null>(null);
+  const [rawCollectionJson, setRawCollectionJson] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedEndpoint, setSelectedEndpoint] = useState<ParsedEndpoint | null>(null);
@@ -46,12 +49,17 @@ function ViewPublishedDocContent() {
       .then((doc) => {
         if (cancelled) return;
         if (!doc || !doc.collectionJson) {
-          setError("Doc not found or you don't have access.");
+          setError(
+            !user
+              ? "sign-in-required"
+              : "Doc not found or you don't have access."
+          );
           return;
         }
         try {
           const parsed = parsePostmanCollection(JSON.parse(doc.collectionJson));
           setCollection(parsed);
+          setRawCollectionJson(doc.collectionJson);
         } catch {
           setError("Invalid collection data.");
         }
@@ -90,14 +98,6 @@ function ViewPublishedDocContent() {
     [mode]
   );
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   const flatFolders = useMemo(() => {
     if (!collection) return [];
     const flat: FolderNode[] = [];
@@ -111,13 +111,42 @@ function ViewPublishedDocContent() {
     return flat;
   }, [collection]);
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   if (error || !collection) {
+    const needsSignIn = error === "sign-in-required";
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
-        <p className="text-destructive mb-4">{error ?? "Not found"}</p>
-        <Button variant="outline" asChild>
-          <Link href="/docs">Back to published docs</Link>
-        </Button>
+        {needsSignIn ? (
+          <>
+            <Lock className="h-10 w-10 text-muted-foreground mb-3" />
+            <p className="text-lg font-semibold mb-1">Sign in to view this doc</p>
+            <p className="text-sm text-muted-foreground mb-6 text-center max-w-xs">
+              This is a private doc. Create an account or sign in to access it.
+            </p>
+            <div className="flex gap-3">
+              <Button asChild>
+                <Link href={`/login?redirect=/docs/view?id=${id}`}>Sign in</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href={`/signup?redirect=/docs/view?id=${id}`}>Create account</Link>
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-destructive mb-4">{error ?? "Not found"}</p>
+            <Button variant="outline" asChild>
+              <Link href="/docs">Back to published docs</Link>
+            </Button>
+          </>
+        )}
       </div>
     );
   }
@@ -184,8 +213,26 @@ function ViewPublishedDocContent() {
             const md = collectionToMarkdown(collection, mode);
             downloadMarkdown(md, `${slug(collection.name)}-api-docs.md`);
           }}
+          title="Export as Markdown"
         >
           <FileDown className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 text-xs h-8"
+          onClick={() => {
+            if (rawCollectionJson) {
+              setStoredCurrent(rawCollectionJson);
+              addToHistory(collection.name, rawCollectionJson);
+              router.push("/app");
+            }
+          }}
+          disabled={!rawCollectionJson}
+          title="Open in full viewer with AI, flowcharts, and more"
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Full viewer</span>
         </Button>
       </header>
 
