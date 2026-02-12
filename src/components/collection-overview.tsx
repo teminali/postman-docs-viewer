@@ -19,6 +19,123 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
+interface FolderSectionProps {
+  folder: FolderNode;
+  mode: ViewMode;
+  onSelectEndpoint: (endpoint: ParsedEndpoint) => void;
+  onExportFolder?: (folder: FolderNode) => void;
+  level?: number;
+}
+
+function FolderSection({
+  folder,
+  mode,
+  onSelectEndpoint,
+  onExportFolder,
+  level = 0,
+}: FolderSectionProps) {
+  const isDevMode = mode === "dev";
+  const id = `folder-${folder.path.length > 0 ? folder.path.join("-") : folder.name}`;
+
+  // Use Card for top-level, custom div for nested
+  const Container = level === 0 ? Card : "div";
+  const containerProps = level === 0
+    ? { className: "scroll-mt-20", id }
+    : { className: cn("scroll-mt-20 mt-6 border-l-2 pl-4", level > 0 && "ml-2"), id };
+
+  const Header = level === 0 ? CardHeader : "div";
+  const headerProps = level === 0 ? { className: "pb-3" } : { className: "mb-3 flex items-center justify-between" };
+
+  const Title = level === 0 ? CardTitle : "h3";
+  const titleClassName = level === 0
+    ? "text-sm font-medium flex items-center gap-2"
+    : "text-sm font-semibold flex items-center gap-2";
+
+  return (
+    // @ts-ignore
+    <Container {...containerProps}>
+      {/* @ts-ignore */}
+      <Header {...headerProps}>
+        <div className="flex items-start justify-between gap-2 w-full">
+          <Title className={titleClassName}>
+            {level === 0 && <FolderTree className="h-4 w-4 text-muted-foreground" />}
+            {folder.name}
+            {folder.description && (
+              <span className="text-xs text-muted-foreground font-normal ml-2">
+                — {folder.description}
+              </span>
+            )}
+          </Title>
+          {onExportFolder && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 h-7 text-xs gap-1.5"
+              onClick={() => onExportFolder(folder)}
+            >
+              <FileDown className="h-3.5 w-3.5" />
+              <span className="sr-only">Export</span>
+            </Button>
+          )}
+        </div>
+      </Header>
+
+      <div className={cn(level === 0 && "p-6 pt-0")}>
+        <div className="space-y-1">
+          {folder.endpoints.map((ep) => (
+            <button
+              key={ep.id}
+              onClick={() => onSelectEndpoint(ep)}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm hover:bg-muted transition-colors text-left group"
+            >
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full shrink-0",
+                  getMethodDot(ep.method)
+                )}
+              />
+              {isDevMode && (
+                <Badge
+                  variant="outline"
+                  className={`${getMethodColor(ep.method)} text-[10px] font-mono font-bold px-1.5 py-0 min-w-[48px] text-center justify-center shrink-0`}
+                >
+                  {ep.method}
+                </Badge>
+              )}
+              <span className="font-medium group-hover:underline">
+                {ep.name}
+              </span>
+              {isDevMode && (
+                <span className="text-xs font-mono text-muted-foreground truncate hidden md:block">
+                  {ep.url}
+                </span>
+              )}
+              <span className="ml-auto text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                View →
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {folder.children.length > 0 && (
+          <div className="space-y-6 mt-4">
+            {folder.children.map((child) => (
+              <FolderSection
+                key={child.name}
+                folder={child}
+                mode={mode}
+                onSelectEndpoint={onSelectEndpoint}
+                onExportFolder={onExportFolder}
+                level={level + 1}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </Container>
+  );
+}
+
 interface CollectionOverviewProps {
   collection: ParsedCollection;
   mode: ViewMode;
@@ -157,103 +274,13 @@ export function CollectionOverview({
       </Card>
 
       {collection.folderTree.map((folder) => (
-        <Card
-          key={folder.path.length ? folder.path.join("/") : folder.name}
-          id={`folder-${folder.path.length ? folder.path.join("-") : folder.name}`}
-          className="scroll-mt-20"
-        >
-          <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <FolderTree className="h-4 w-4 text-muted-foreground" />
-                {folder.name}
-                {folder.description && (
-                  <span className="text-xs text-muted-foreground font-normal ml-2">
-                    — {folder.description}
-                  </span>
-                )}
-              </CardTitle>
-              {onExportFolder && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 h-7 text-xs gap-1.5"
-                  onClick={() => onExportFolder(folder)}
-                >
-                  <FileDown className="h-3.5 w-3.5" />
-                  Export .md
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1">
-              {folder.endpoints.map((ep) => (
-                <button
-                  key={ep.id}
-                  onClick={() => onSelectEndpoint(ep)}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm hover:bg-muted transition-colors text-left group"
-                >
-                  <span
-                    className={cn(
-                      "h-2 w-2 rounded-full shrink-0",
-                      getMethodDot(ep.method)
-                    )}
-                  />
-                  {isDevMode && (
-                    <Badge
-                      variant="outline"
-                      className={`${getMethodColor(ep.method)} text-[10px] font-mono font-bold px-1.5 py-0 min-w-[48px] text-center justify-center shrink-0`}
-                    >
-                      {ep.method}
-                    </Badge>
-                  )}
-                  <span className="font-medium group-hover:underline">
-                    {ep.name}
-                  </span>
-                  {isDevMode && (
-                    <span className="text-xs font-mono text-muted-foreground truncate hidden md:block">
-                      {ep.url}
-                    </span>
-                  )}
-                  <span className="ml-auto text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                    View →
-                  </span>
-                </button>
-              ))}
-              {folder.children.map((child) =>
-                child.endpoints.map((ep) => (
-                  <button
-                    key={ep.id}
-                    onClick={() => onSelectEndpoint(ep)}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm hover:bg-muted transition-colors text-left group pl-8"
-                  >
-                    <span
-                      className={cn(
-                        "h-2 w-2 rounded-full shrink-0",
-                        getMethodDot(ep.method)
-                      )}
-                    />
-                    {isDevMode && (
-                      <Badge
-                        variant="outline"
-                        className={`${getMethodColor(ep.method)} text-[10px] font-mono font-bold px-1.5 py-0 min-w-[48px] text-center justify-center shrink-0`}
-                      >
-                        {ep.method}
-                      </Badge>
-                    )}
-                    <span className="font-medium group-hover:underline">
-                      {ep.name}
-                    </span>
-                    <span className="ml-auto text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                      View →
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <FolderSection
+          key={folder.name}
+          folder={folder}
+          mode={mode}
+          onSelectEndpoint={onSelectEndpoint}
+          onExportFolder={onExportFolder}
+        />
       ))}
 
       {/* Variables (Dev Mode only) */}

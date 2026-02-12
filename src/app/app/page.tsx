@@ -261,13 +261,20 @@ export default function Home() {
                 setSelectedEndpoint(null);
                 setMobileSidebarOpen(false);
                 setTimeout(() => {
-                  // Find root parent name to scroll to the correct section
-                  const rootName = item.path.length > 0 ? item.path[0] : item.name;
-                  // Handle potential slugification if used in ID generation (currently raw name)
-                  const id = `folder-${rootName}`;
+                  // Find ID to scroll to. CollectionOverview recursively renders folders with IDs:
+                  // id={`folder-${folder.path.length > 0 ? folder.path.join("-") : folder.name}`}
+
+                  // For root folder: path is empty. item.name is mostly correct but in FolderNode path is empty array.
+                  // For nested folder: path is ["Root", "Sub"]. Join to "Root-Sub".
+
+                  const suffix = item.path.length > 0 ? item.path.join("-") : item.name;
+                  const id = `folder-${suffix}`;
+
                   const el = document.getElementById(id);
                   if (el) {
                     el.scrollIntoView({ behavior: "smooth", block: "start" });
+                  } else {
+                    console.warn("Could not find element with id:", id);
                   }
                 }, 100);
               }

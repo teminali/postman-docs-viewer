@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Bot, Loader2, Send, FolderTree, FileJson, FileText, Copy } from "lucide-react";
+import { Bot, Loader2, Send, FolderTree, FileJson, FileText, Copy, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 import {
   Sheet,
   SheetContent,
@@ -48,8 +50,13 @@ export function AIAssistantSheet({
   const [contentType, setContentType] = useState<"ask" | "prompt">("ask");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const folderList = listFoldersForScope(collection);
+
+  const filteredFolders = folderList.filter((f) =>
+    f.pathKey.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const pathKeysForScope =
     scope === "entire"
@@ -73,10 +80,10 @@ export function AIAssistantSheet({
     const q = question.trim();
     if (!q) return;
 
-      setError(null);
-      setResponse("");
-      setContentType("ask");
-      setLoading(true);
+    setError(null);
+    setResponse("");
+    setContentType("ask");
+    setLoading(true);
 
     try {
       const pathKeys = scope === "entire" ? null : selectedPathKeys.length ? selectedPathKeys : folderList.map((f) => f.pathKey);
@@ -113,7 +120,10 @@ export function AIAssistantSheet({
   }, [collection, pathKeysForScope]);
 
   const handleCopyPrompt = useCallback(() => {
-    if (response) navigator.clipboard.writeText(response);
+    if (response) {
+      navigator.clipboard.writeText(response);
+      toast.success("Copied to clipboard");
+    }
   }, [response]);
 
   const hasKey = !!getAPIKey("gemini")?.trim();
@@ -179,11 +189,22 @@ export function AIAssistantSheet({
           </div>
 
           {scope === "folders" && (
-            <div className="space-y-2">
+            <div className="space-y-2 flex flex-col flex-1 min-h-0">
               <span className="text-sm font-medium">Folders (select to include)</span>
-              <ScrollArea className="h-32 rounded-md border p-2">
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search folders..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+              <ScrollArea className="h-40 rounded-md border p-2">
                 <div className="space-y-1">
-                  {folderList.map((f) => {
+                  {filteredFolders.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-2">No folders found</p>
+                  ) : filteredFolders.map((f) => {
                     const selected = selectedPathKeys.includes(f.pathKey);
                     return (
                       <button
@@ -205,9 +226,9 @@ export function AIAssistantSheet({
                         >
                           {selected ? "✓" : ""}
                         </span>
-                        <span className="truncate">{f.pathKey}</span>
+                        <span className="truncate" title={f.pathKey}>{f.pathKey}</span>
                         <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                          {f.endpointCount} endpoints
+                          {f.endpointCount} eps
                         </span>
                       </button>
                     );
@@ -218,7 +239,7 @@ export function AIAssistantSheet({
           )}
 
           {/* Question */}
-          <div className="space-y-2">
+          <div className="space-y-2 shrink-0">
             <label className="text-sm font-medium">Your question</label>
             <textarea
               value={question}
@@ -230,7 +251,7 @@ export function AIAssistantSheet({
             />
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 shrink-0">
             <Button
               onClick={handleSend}
               disabled={loading || !question.trim() || !hasKey}
@@ -254,7 +275,7 @@ export function AIAssistantSheet({
           </div>
 
           {error && (
-            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive shrink-0">
               {error}
             </div>
           )}
@@ -271,7 +292,7 @@ export function AIAssistantSheet({
                   </Button>
                 )}
               </div>
-              <ScrollArea className="min-h-0 flex-1 rounded-md border bg-muted/30 p-3 max-h-[min(50vh,400px)]">
+              <ScrollArea className="min-h-0 flex-1 rounded-md border bg-muted/30 p-3">
                 <div className="pr-2">
                   {contentType === "prompt" ? (
                     <pre className="whitespace-pre-wrap text-xs font-mono">{response}</pre>

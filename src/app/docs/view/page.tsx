@@ -98,6 +98,19 @@ function ViewPublishedDocContent() {
     );
   }
 
+  const flatFolders = useMemo(() => {
+    if (!collection) return [];
+    const flat: FolderNode[] = [];
+    const traverse = (nodes: FolderNode[]) => {
+      for (const node of nodes) {
+        flat.push(node);
+        if (node.children.length) traverse(node.children);
+      }
+    };
+    traverse(collection.folderTree);
+    return flat;
+  }, [collection]);
+
   if (error || !collection) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
@@ -123,7 +136,25 @@ function ViewPublishedDocContent() {
           <span className="text-sm font-semibold truncate">{collection.name}</span>
         </div>
         <div className="flex-1 flex justify-center px-4">
-          <SearchCommand endpoints={collection.endpoints} onSelect={handleSelectEndpoint} />
+          <SearchCommand
+            endpoints={collection.endpoints}
+            folders={flatFolders}
+            onSelect={(item) => {
+              if ("method" in item) {
+                handleSelectEndpoint(item as ParsedEndpoint);
+              } else {
+                setSelectedEndpoint(null);
+                setTimeout(() => {
+                  const suffix = item.path.length > 0 ? item.path.join("-") : item.name;
+                  const id = `folder-${suffix}`;
+                  const el = document.getElementById(id);
+                  if (el) {
+                    el.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }
+                }, 100);
+              }
+            }}
+          />
         </div>
         <div className="flex items-center gap-1 rounded-lg border p-0.5">
           <Button
