@@ -161,6 +161,19 @@ export default function Home() {
 
   const history = restored ? getHistory() : [];
 
+  const flatFolders = useMemo(() => {
+    if (!collection) return [];
+    const flat: FolderNode[] = [];
+    const traverse = (nodes: FolderNode[]) => {
+      for (const node of nodes) {
+        flat.push(node);
+        if (node.children.length) traverse(node.children);
+      }
+    };
+    traverse(collection.folderTree);
+    return flat;
+  }, [collection]);
+
   // If no collection is loaded (and we've checked storage), show the upload screen
   if (!collection) {
     return (
@@ -238,17 +251,7 @@ export default function Home() {
         <div className="flex-1 flex justify-center px-4">
           <SearchCommand
             endpoints={collection.endpoints}
-            folders={useMemo(() => {
-              const flat: FolderNode[] = [];
-              const traverse = (nodes: FolderNode[]) => {
-                for (const node of nodes) {
-                  flat.push(node);
-                  if (node.children.length) traverse(node.children);
-                }
-              };
-              traverse(collection.folderTree);
-              return flat;
-            }, [collection.folderTree])}
+            folders={flatFolders}
             onSelect={(item) => {
               if ("method" in item) {
                 // It's an endpoint
