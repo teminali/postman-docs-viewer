@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
-import { Upload, FileJson, AlertCircle, Moon, Sun, History, KeyRound, User, LogOut, Settings } from "lucide-react";
+import { Upload, FileJson, AlertCircle, Moon, Sun, History, KeyRound, User, LogOut, Settings, Github } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -165,6 +165,23 @@ export function FileUpload({
             </TooltipContent>
           </Tooltip>
         )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              asChild
+            >
+              <a href="https://github.com/teminali/postman-docs-viewer" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+                <Github className="h-4 w-4" />
+              </a>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            View on GitHub
+          </TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
