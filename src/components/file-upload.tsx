@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Upload, FileJson, AlertCircle, Moon, Sun, History, KeyRound } from "lucide-react";
+import Link from "next/link";
+import { Upload, FileJson, AlertCircle, Moon, Sun, History, KeyRound, User, LogOut, Settings } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
@@ -10,6 +12,15 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { HistoryEntry } from "@/lib/collection-storage";
 
 interface FileUploadProps {
@@ -26,6 +37,7 @@ export function FileUpload({
   onOpenSettings,
 }: FileUploadProps) {
   const { theme, toggleTheme } = useTheme();
+  const { user, loading: authLoading, signOut } = useAuth();
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -93,8 +105,48 @@ export function FileUpload({
 
   return (
     <div className="relative flex min-h-screen items-center justify-center p-4">
-      {/* Top-right: API key settings + Theme */}
+      {/* Top-right: Auth + API key settings + Theme */}
       <div className="absolute right-4 top-4 flex items-center gap-1">
+        {/* Always show auth entry: Sign in/Sign up when not configured (login page explains setup), or full auth when configured */}
+        {authLoading ? null : user ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-2 h-8" aria-label="Account menu">
+                <User className="h-4 w-4" />
+                <span className="hidden sm:inline truncate max-w-[120px] text-xs">
+                  {user.displayName || user.email || "Account"}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel className="font-normal">
+                      {user.email}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/settings">
+                        <Settings className="h-4 w-4 mr-2" />
+                        Profile &amp; Settings
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => signOut()}>
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenuPortal>
+          </DropdownMenu>
+        ) : (
+          <>
+            <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
+              <Link href="/login">Sign in</Link>
+            </Button>
+            <Button variant="default" size="sm" className="h-8 text-xs" asChild>
+              <Link href="/signup">Sign up</Link>
+            </Button>
+          </>
+        )}
         {onOpenSettings && (
           <Tooltip>
             <TooltipTrigger asChild>
