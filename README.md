@@ -29,8 +29,20 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Deploy on Firebase Hosting
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The app is configured for **static export** and **Firebase Hosting** with automatic deploys from GitHub.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. **Push to GitHub** (create a repo and push):
+   ```bash
+   git remote add origin https://github.com/YOUR_USERNAME/postman-docs-viewer.git
+   git push -u origin main
+   ```
+
+2. **Add Firebase secret** so GitHub Actions can deploy:
+   - Run locally: `npx firebase init hosting:github` and follow the prompts (it will create a service account and add the secret to your repo), **or**
+   - Manually: [Create a service account](https://firebase.google.com/docs/hosting/github-integration#set_up_a_service_account) in Firebase Console → IAM → Service accounts, then add its JSON key as a **GitHub repository secret** named `FIREBASE_SERVICE_ACCOUNT` (Settings → Secrets and variables → Actions).
+
+3. **Deploy**: Pushing to the `main` branch triggers the workflow and deploys to Firebase Hosting. Your site will be at `https://rabies-10776.web.app` (or your project’s Hosting URL).
+
+Optional: copy `.env.example` to `.env.local` and fill in Firebase config if you add Analytics or other client SDKs later.
