@@ -66,8 +66,8 @@ export default function SettingsPage() {
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Firebase not configured</CardTitle>
-            <CardDescription>Add NEXT_PUBLIC_FIREBASE_* to .env.local to use settings.</CardDescription>
+            <CardTitle>Not configured</CardTitle>
+            <CardDescription>Add the required environment variables to .env.local to use settings.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline">
@@ -208,7 +208,7 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle>Profile</CardTitle>
                 <CardDescription>
-                  Update your display name and profile photo. Changes are saved to your Firebase account.
+                  Update your display name and profile photo. Changes are saved to your account.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">

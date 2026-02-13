@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
-import { Upload, FileJson, AlertCircle, Moon, Sun, History, KeyRound, User, LogOut, Settings, Github, Cloud } from "lucide-react";
+import { Upload, FileJson, AlertCircle, Moon, Sun, History, User, LogOut, Settings, Github, Cloud, Database, ScanSearch } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,16 +27,20 @@ interface FileUploadProps {
   onFileLoaded: (json: unknown, fileName: string) => void;
   history?: HistoryEntry[];
   onSelectFromHistory?: (entry: HistoryEntry) => void;
-  onOpenSettings?: () => void;
-  onOpenFirebaseDocs?: () => void;
+  onOpenPublishedDocs?: () => void;
+  onOpenConnectDb?: () => void;
+  onDocumentDb?: () => void;
+  isExternalDbConnected?: boolean;
 }
 
 export function FileUpload({
   onFileLoaded,
   history = [],
   onSelectFromHistory,
-  onOpenSettings,
-  onOpenFirebaseDocs,
+  onOpenPublishedDocs,
+  onOpenConnectDb,
+  onDocumentDb,
+  isExternalDbConnected: externalDbConnected = false,
 }: FileUploadProps) {
   const { theme, toggleTheme } = useTheme();
   const { user, loading: authLoading, signOut } = useAuth();
@@ -107,103 +111,65 @@ export function FileUpload({
 
   return (
     <div className="relative flex min-h-screen items-center justify-center p-4">
-      {/* Top-right: Auth + API key settings + Theme */}
+      {/* Top-right: compact action row */}
       <div className="absolute right-4 top-4 flex items-center gap-1">
-        {/* Always show auth entry: Sign in/Sign up when not configured (login page explains setup), or full auth when configured */}
-        {authLoading ? null : user ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2 h-8" aria-label="Account menu">
-                <User className="h-4 w-4" />
-                <span className="hidden sm:inline truncate max-w-[120px] text-xs">
-                  {user.displayName || user.email || "Account"}
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+              <a href="https://github.com/teminali/postman-docs-viewer" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+                <Github className="h-4 w-4" />
+              </a>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">View on GitHub</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleTheme}>
+              {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{theme === "dark" ? "Light mode" : "Dark mode"}</TooltipContent>
+        </Tooltip>
+        {!authLoading && (
+          <>
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Account">
+                    <User className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
                 <DropdownMenuPortal>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuLabel className="font-normal">
-                      {user.email}
+                      <div className="flex flex-col">
+                        {user.displayName && <span className="font-medium text-sm">{user.displayName}</span>}
+                        <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+                      </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
                       <Link href="/settings">
                         <Settings className="h-4 w-4 mr-2" />
-                        Profile &amp; Settings
+                        Settings
                       </Link>
                     </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => signOut()}>
                       <LogOut className="h-4 w-4 mr-2" />
                       Sign out
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenuPortal>
-          </DropdownMenu>
-        ) : (
-          <>
-            <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
-              <Link href="/login">Sign in</Link>
-            </Button>
-            <Button variant="default" size="sm" className="h-8 text-xs" asChild>
-              <Link href="/signup">Sign up</Link>
-            </Button>
+              </DropdownMenu>
+            ) : (
+              <Button variant="default" size="sm" className="h-7 text-xs px-3" asChild>
+                <Link href="/login">Sign in</Link>
+              </Button>
+            )}
           </>
         )}
-        {onOpenSettings && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9"
-                onClick={onOpenSettings}
-                aria-label="AI settings & API key"
-              >
-                <KeyRound className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              AI settings & API key
-            </TooltipContent>
-          </Tooltip>
-        )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9"
-              asChild
-            >
-              <a href="https://github.com/teminali/postman-docs-viewer" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
-                <Github className="h-4 w-4" />
-              </a>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            View on GitHub
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9"
-              onClick={toggleTheme}
-              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            >
-              {theme === "dark" ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {theme === "dark" ? "Light mode" : "Dark mode"}
-          </TooltipContent>
-        </Tooltip>
       </div>
 
       <div className="w-full max-w-2xl space-y-8">
@@ -296,8 +262,8 @@ export function FileUpload({
           </label>
         </Card>
 
-        {/* Firebase Docs */}
-        {onOpenFirebaseDocs && (
+        {/* Published docs */}
+        {onOpenPublishedDocs && (
           <div className="text-center">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -310,14 +276,71 @@ export function FileUpload({
             <Button
               variant="outline"
               className="mt-4 gap-2"
-              onClick={onOpenFirebaseDocs}
+              onClick={onOpenPublishedDocs}
             >
               <Cloud className="h-4 w-4" />
-              Browse Firebase Docs
+              Browse published docs
             </Button>
             <p className="text-xs text-muted-foreground mt-2">
-              Load published API docs from Firebase with full viewer support
+              Load published API docs with full viewer support
             </p>
+          </div>
+        )}
+
+        {/* External database */}
+        {(onOpenConnectDb || onDocumentDb) && (
+          <div className="text-center">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">or</span>
+              </div>
+            </div>
+            {externalDbConnected ? (
+              <>
+                <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
+                  {onDocumentDb && (
+                    <Button
+                      variant="outline"
+                      className="gap-2"
+                      onClick={onDocumentDb}
+                    >
+                      <ScanSearch className="h-4 w-4" />
+                      Document your database
+                    </Button>
+                  )}
+                  {onOpenConnectDb && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs text-muted-foreground h-9"
+                      onClick={onOpenConnectDb}
+                    >
+                      Edit connection
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Scan and document your Firestore database schema
+                </p>
+              </>
+            ) : onOpenConnectDb ? (
+              <>
+                <Button
+                  variant="outline"
+                  className="mt-4 gap-2"
+                  onClick={onOpenConnectDb}
+                >
+                  <Database className="h-4 w-4" />
+                  Connect your database
+                </Button>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Link your own Firestore to document and publish
+                </p>
+              </>
+            ) : null}
           </div>
         )}
 

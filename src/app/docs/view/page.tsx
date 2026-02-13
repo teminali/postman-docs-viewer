@@ -1,21 +1,41 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { getPublishedDoc } from "@/lib/published-docs";
+import { getPublishedDoc, updatePublishedDocContent } from "@/lib/published-docs";
 import { setStoredCurrent, addToHistory } from "@/lib/collection-storage";
 import { parsePostmanCollection, type ParsedCollection } from "@/lib/postman-parser";
-import type { ParsedEndpoint, ViewMode, FolderNode } from "@/types/postman";
+import type { ParsedEndpoint, ViewMode, FolderNode, PostmanCollection } from "@/types/postman";
+import type { FirestoreSchema } from "@/types/firestore-schema";
 import { CollectionOverview } from "@/components/collection-overview";
 import { DevView } from "@/components/dev-view";
 import { UserView } from "@/components/user-view";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { SearchCommand } from "@/components/search-command";
+import { FirestoreSchemaViewer } from "@/components/firestore-schema-viewer";
+import { FirestoreAssistantSheet } from "@/components/firestore-assistant-sheet";
+import { FirestoreSchemaUpload } from "@/components/firestore-schema-upload";
+import { schemaToMarkdown } from "@/lib/firestore-schema-export";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileJson, Loader2, ChevronLeft, Code2, BookOpen, FileDown, Maximize2, Lock } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  FileJson,
+  Loader2,
+  ChevronLeft,
+  Code2,
+  BookOpen,
+  FileDown,
+  Maximize2,
+  Lock,
+  RefreshCw,
+} from "lucide-react";
 import {
   collectionToMarkdown,
   endpointToMarkdown,
@@ -32,11 +52,20 @@ function ViewPublishedDocContent() {
   const router = useRouter();
   const [collection, setCollection] = useState<ParsedCollection | null>(null);
   const [rawCollectionJson, setRawCollectionJson] = useState<string | null>(null);
+  const [firestoreSchema, setFirestoreSchema] = useState<FirestoreSchema | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedEndpoint, setSelectedEndpoint] = useState<ParsedEndpoint | null>(null);
   const [mode, setMode] = useState<ViewMode>("dev");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [updateMode, setUpdateMode] = useState<"rescan" | null>(null);
+  const [firestoreAssistantOpen, setFirestoreAssistantOpen] = useState(false);
+
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+
+  const isOwner = !!user && !!ownerId && user.uid === ownerId;
 
   useEffect(() => {
     if (!id) {
@@ -56,8 +85,20 @@ function ViewPublishedDocContent() {
           );
           return;
         }
+
+        setOwnerId(doc.ownerId);
+
         try {
-          const parsed = parsePostmanCollection(JSON.parse(doc.collectionJson));
+          const payload = JSON.parse(doc.collectionJson);
+
+          // Detect Firestore schema docs
+          if (payload && payload.type === "firestore-schema" && payload.schema) {
+            setFirestoreSchema(payload.schema as FirestoreSchema);
+            return;
+          }
+
+          // Otherwise treat as Postman collection
+          const parsed = parsePostmanCollection(payload);
           setCollection(parsed);
           setRawCollectionJson(doc.collectionJson);
         } catch {
@@ -98,6 +139,90 @@ function ViewPublishedDocContent() {
     [mode]
   );
 
+  const handleExportUserGuidePdf = useCallback(() => {
+    if (!collection) return;
+    import("@/lib/user-guide-export").then(({ exportUserGuidePdf }) => exportUserGuidePdf(collection));
+  }, [collection]);
+
+  const handleExportUserGuideDocx = useCallback(() => {
+    if (!collection) return;
+    import("@/lib/user-guide-export").then(({ exportUserGuideDocx }) => exportUserGuideDocx(collection));
+  }, [collection]);
+
+  const handleExportUserGuideMd = useCallback(() => {
+    if (!collection) return;
+    import("@/lib/user-guide-export").then(({ exportUserGuideMd }) => exportUserGuideMd(collection));
+  }, [collection]);
+
+  // ─── Update handlers ────────────────────────────────────────────
+
+  /** Re-upload Postman JSON for a published doc */
+  const handleReplacePostmanFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !id || !user) return;
+      e.target.value = "";
+
+      setUpdating(true);
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text) as PostmanCollection;
+        const parsed = parsePostmanCollection(json);
+
+        await updatePublishedDocContent(id, user.uid, {
+          collectionJson: text,
+          name: parsed.name,
+          endpointCount: parsed.totalRequests,
+          folderCount: parsed.totalFolders,
+        });
+
+        // Refresh local state
+        setCollection(parsed);
+        setRawCollectionJson(text);
+        setSelectedEndpoint(null);
+      } catch (err) {
+        console.error("Update failed:", err);
+        setError(err instanceof Error ? err.message : "Failed to update");
+      } finally {
+        setUpdating(false);
+      }
+    },
+    [id, user]
+  );
+
+  /** Re-scan Firestore schema and update the published doc */
+  const handleUpdateFirestoreSchema = useCallback(
+    async (newSchema: FirestoreSchema) => {
+      if (!id || !user) return;
+      setUpdating(true);
+      try {
+        const markdown = schemaToMarkdown(newSchema);
+        const docPayload = JSON.stringify({
+          type: "firestore-schema",
+          projectName: newSchema.projectName,
+          markdown,
+          schema: newSchema,
+        });
+
+        await updatePublishedDocContent(id, user.uid, {
+          collectionJson: docPayload,
+          name: `${newSchema.projectName} — Database Docs`,
+          endpointCount: newSchema.collections.length,
+          folderCount: newSchema.indexes.length,
+        });
+
+        setFirestoreSchema(newSchema);
+        setUpdateMode(null);
+      } catch (err) {
+        console.error("Update failed:", err);
+        setError(err instanceof Error ? err.message : "Failed to update");
+      } finally {
+        setUpdating(false);
+      }
+    },
+    [id, user]
+  );
+
   const flatFolders = useMemo(() => {
     if (!collection) return [];
     const flat: FolderNode[] = [];
@@ -116,6 +241,59 @@ function ViewPublishedDocContent() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
+    );
+  }
+
+  // Firestore schema re-scan mode
+  if (updateMode === "rescan" && firestoreSchema) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <div className="w-full max-w-2xl">
+          <FirestoreSchemaUpload
+            onSchemaLoaded={handleUpdateFirestoreSchema}
+          />
+          {updating && (
+            <div className="mt-4 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Updating published docs...
+            </div>
+          )}
+          <div className="mt-6 text-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground text-xs"
+              onClick={() => setUpdateMode(null)}
+            >
+              <ChevronLeft className="h-3 w-3 mr-1" />
+              Back to docs
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Firestore schema doc — render the schema viewer
+  if (firestoreSchema) {
+    return (
+      <>
+        <FirestoreSchemaViewer
+          schema={firestoreSchema}
+          onReset={() => router.push("/docs")}
+          onPublish={
+            isOwner
+              ? () => setUpdateMode("rescan")
+              : undefined
+          }
+          onOpenAssistant={() => setFirestoreAssistantOpen(true)}
+        />
+        <FirestoreAssistantSheet
+          open={firestoreAssistantOpen}
+          onOpenChange={setFirestoreAssistantOpen}
+          schema={firestoreSchema}
+        />
+      </>
     );
   }
 
@@ -205,6 +383,38 @@ function ViewPublishedDocContent() {
             <span className="hidden sm:inline">User</span>
           </Button>
         </div>
+
+        {/* Update — re-upload JSON (owner only) */}
+        {isOwner && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => replaceInputRef.current?.click()}
+                disabled={updating}
+              >
+                {updating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Update — re-upload JSON
+            </TooltipContent>
+          </Tooltip>
+        )}
+        <input
+          ref={replaceInputRef}
+          type="file"
+          accept=".json"
+          onChange={handleReplacePostmanFile}
+          className="hidden"
+        />
+
         <Button
           variant="ghost"
           size="icon"
@@ -279,6 +489,9 @@ function ViewPublishedDocContent() {
                 mode={mode}
                 onSelectEndpoint={handleSelectEndpoint}
                 onExportFolder={handleExportFolder}
+                onExportUserGuidePdf={handleExportUserGuidePdf}
+                onExportUserGuideDocx={handleExportUserGuideDocx}
+                onExportUserGuideMd={handleExportUserGuideMd}
               />
             )}
           </div>

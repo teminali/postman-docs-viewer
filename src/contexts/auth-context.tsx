@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (email: string, password: string) => {
       setAuthError(null);
       const auth = getFirebaseAuth();
-      if (!auth) throw new Error("Firebase Auth is not configured");
+      if (!auth) throw new Error("Auth is not configured");
       try {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
         return cred;
@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (email: string, password: string) => {
       setAuthError(null);
       const auth = getFirebaseAuth();
-      if (!auth) throw new Error("Firebase Auth is not configured");
+      if (!auth) throw new Error("Auth is not configured");
       try {
         const cred = await signInWithEmailAndPassword(auth, email, password);
         return cred;
@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = useCallback(async () => {
     setAuthError(null);
     const auth = getFirebaseAuth();
-    if (!auth) throw new Error("Firebase Auth is not configured");
+    if (!auth) throw new Error("Auth is not configured");
     try {
       const provider = new GoogleAuthProvider();
       const cred = await signInWithPopup(auth, provider);
@@ -140,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const sendPasswordReset = useCallback(async (email: string) => {
     setAuthError(null);
     const auth = getFirebaseAuth();
-    if (!auth) throw new Error("Firebase Auth is not configured");
+    if (!auth) throw new Error("Auth is not configured");
     try {
       await sendPasswordResetEmail(auth, email.trim());
     } catch (err: unknown) {
@@ -176,7 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!user || !user.email) throw new Error("Not signed in");
       setAuthError(null);
       const auth = getFirebaseAuth();
-      if (!auth) throw new Error("Firebase Auth is not configured");
+      if (!auth) throw new Error("Auth is not configured");
       try {
         const cred = EmailAuthProvider.credential(user.email, currentPassword);
         await reauthenticateWithCredential(user, cred);

@@ -97,7 +97,7 @@ export async function publishDoc(
   input: PublishInput
 ): Promise<string> {
   const db = getFirestoreDb();
-  if (!db) throw new Error("Firestore is not configured");
+  if (!db) throw new Error("Backend is not configured");
 
   const docRef = doc(collection(db, FIRESTORE_COLLECTION));
   const id = docRef.id;
@@ -144,14 +144,14 @@ export async function publishDoc(
   return id;
 }
 
-/** Update an existing published doc (only owner). */
+/** Update an existing published doc metadata (only owner). */
 export async function updatePublishedDoc(
   docId: string,
   userId: string,
   updates: { name?: string; description?: string; visibility?: PublishVisibility }
 ): Promise<void> {
   const db = getFirestoreDb();
-  if (!db) throw new Error("Firestore is not configured");
+  if (!db) throw new Error("Backend is not configured");
 
   const docRef = doc(db, FIRESTORE_COLLECTION, docId);
   const snap = await getDoc(docRef);
@@ -168,10 +168,77 @@ export async function updatePublishedDoc(
   );
 }
 
+/** Update the content (JSON) of an existing published doc (only owner).
+ *  Re-chunks and replaces the data while preserving the doc ID and metadata. */
+export async function updatePublishedDocContent(
+  docId: string,
+  userId: string,
+  input: {
+    collectionJson: string;
+    name?: string;
+    description?: string;
+    endpointCount?: number;
+    folderCount?: number;
+  }
+): Promise<void> {
+  const db = getFirestoreDb();
+  if (!db) throw new Error("Backend is not configured");
+
+  const docRef = doc(db, FIRESTORE_COLLECTION, docId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) throw new Error("Document not found");
+  if (snap.data()?.ownerId !== userId) throw new Error("Not authorized to update");
+
+  // Delete existing chunks first
+  const oldChunkCount = snap.data()?.chunkCount ?? 0;
+  if (oldChunkCount > 0) {
+    const chunksBatch = writeBatch(db);
+    for (let i = 0; i < oldChunkCount; i++) {
+      const chunkRef = doc(
+        collection(db, FIRESTORE_COLLECTION, docId, CHUNKS_SUBCOLLECTION),
+        String(i)
+      );
+      chunksBatch.delete(chunkRef);
+    }
+    await chunksBatch.commit();
+  }
+
+  const needsChunking = input.collectionJson.length > MAX_INLINE_SIZE;
+
+  const updates: Record<string, unknown> = {
+    collectionJson: needsChunking ? null : input.collectionJson,
+    chunkCount: 0,
+    updatedAt: serverTimestamp(),
+  };
+  if (input.name) updates.name = input.name;
+  if (input.description !== undefined) updates.description = input.description;
+  if (input.endpointCount !== undefined) updates.endpointCount = input.endpointCount;
+  if (input.folderCount !== undefined) updates.folderCount = input.folderCount;
+
+  if (needsChunking) {
+    const chunks = splitIntoChunks(input.collectionJson, CHUNK_SIZE);
+    updates.chunkCount = chunks.length;
+
+    await setDoc(docRef, updates, { merge: true });
+
+    const batch = writeBatch(db);
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkRef = doc(
+        collection(db, FIRESTORE_COLLECTION, docId, CHUNKS_SUBCOLLECTION),
+        String(i)
+      );
+      batch.set(chunkRef, { data: chunks[i], index: i });
+    }
+    await batch.commit();
+  } else {
+    await setDoc(docRef, updates, { merge: true });
+  }
+}
+
 /** Unpublish (delete) a doc. Only owner. */
 export async function unpublishDoc(docId: string, userId: string): Promise<void> {
   const db = getFirestoreDb();
-  if (!db) throw new Error("Firestore is not configured");
+  if (!db) throw new Error("Backend is not configured");
 
   const docRef = doc(db, FIRESTORE_COLLECTION, docId);
   const snap = await getDoc(docRef);
@@ -230,8 +297,7 @@ export async function getPublishedDoc(
         err
       );
       throw new Error(
-        "This doc is stored in Firebase Storage which requires CORS configuration. " +
-        "Please re-publish the doc to migrate it, or configure CORS on your Storage bucket."
+        "This doc could not be loaded. Please re-publish the doc or check storage configuration."
       );
     }
   }

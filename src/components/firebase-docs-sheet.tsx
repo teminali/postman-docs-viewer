@@ -175,19 +175,19 @@ export function FirebaseDocsSheet({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Cloud className="h-5 w-5" />
-            Firebase Docs
+            Published docs
           </SheetTitle>
           <SheetDescription>
-            Browse and load published API docs from Firebase into the full viewer with AI, flowcharts, and export.
+            Browse and load published API docs into the full viewer with AI, flowcharts, and export.
           </SheetDescription>
         </SheetHeader>
 
         {!isConfigured ? (
           <div className="flex flex-col items-center justify-center flex-1 p-4 text-center">
             <AlertCircle className="h-10 w-10 text-muted-foreground/50 mb-3" />
-            <p className="text-sm font-medium mb-1">Firebase not configured</p>
+            <p className="text-sm font-medium mb-1">Not configured</p>
             <p className="text-xs text-muted-foreground max-w-xs">
-              Add NEXT_PUBLIC_FIREBASE_* environment variables to .env.local to browse published docs.
+              Add the required environment variables to .env.local to browse published docs.
             </p>
           </div>
         ) : (

@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Accordion,
   AccordionContent,
@@ -21,7 +22,10 @@ import {
   Variable,
   Code2,
   FileDown,
+  Send,
 } from "lucide-react";
+import { ApiPlayground } from "@/components/api-playground";
+import { ApiCodeSnippets } from "@/components/api-code-snippets";
 
 interface DevViewProps {
   endpoint: ParsedEndpoint;
@@ -102,6 +106,25 @@ export function DevView({ endpoint, onExportMd }: DevViewProps) {
 
       <Separator />
 
+      {/* ═══ Tabbed sections ═══ */}
+      <Tabs defaultValue="docs" className="w-full">
+        <TabsList className="w-full justify-start">
+          <TabsTrigger value="docs" className="gap-1.5 text-xs">
+            <FileJson className="h-3.5 w-3.5" />
+            Documentation
+          </TabsTrigger>
+          <TabsTrigger value="playground" className="gap-1.5 text-xs">
+            <Send className="h-3.5 w-3.5" />
+            Playground
+          </TabsTrigger>
+          <TabsTrigger value="snippets" className="gap-1.5 text-xs">
+            <Code2 className="h-3.5 w-3.5" />
+            Code Snippets
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ─── Documentation tab ─── */}
+        <TabsContent value="docs" className="mt-6">
       <Accordion
         type="multiple"
         defaultValue={[
@@ -402,6 +425,18 @@ export function DevView({ endpoint, onExportMd }: DevViewProps) {
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+
+        {/* ─── Playground tab ─── */}
+        <TabsContent value="playground" className="mt-6">
+          <ApiPlayground endpoint={endpoint} />
+        </TabsContent>
+
+        {/* ─── Code Snippets tab ─── */}
+        <TabsContent value="snippets" className="mt-6">
+          <ApiCodeSnippets endpoint={endpoint} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

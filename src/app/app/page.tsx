@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { FileUpload } from "@/components/file-upload";
 import { SearchCommand } from "@/components/search-command";
 import { SidebarNav } from "@/components/sidebar-nav";
@@ -46,6 +46,7 @@ import {
   downloadMarkdown,
   slug,
 } from "@/lib/markdown-export";
+import { exportUserGuidePdf, exportUserGuideDocx, exportUserGuideMd } from "@/lib/user-guide-export";
 import {
   Code2,
   BookOpen,
@@ -59,23 +60,33 @@ import {
   Moon,
   Sun,
   History,
-  KeyRound,
-  Bot,
+  Sparkles,
   GitBranch,
   User,
   LogOut,
   Settings,
   CloudUpload,
   Cloud,
+  Database,
+  RefreshCw,
+  MoreVertical,
+  ScanSearch,
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme } from "@/components/theme-provider";
-import { AISettingsSheet } from "@/components/ai-settings-sheet";
-import { AIAssistantSheet } from "@/components/ai-assistant-sheet";
+import { AssistantSheet } from "@/components/assistant-sheet";
+import { FirestoreAssistantSheet } from "@/components/firestore-assistant-sheet";
 import { FlowchartSheet } from "@/components/flowchart-sheet";
 import { PublishSheet } from "@/components/publish-sheet";
 import { FirebaseDocsSheet } from "@/components/firebase-docs-sheet";
+import { ConnectDbSheet } from "@/components/connect-db-sheet";
+// ExternalDocsSheet removed — browse DB replaced by document DB flow
+import { isExternalDbConnected } from "@/lib/external-db-settings";
+import { FirestoreSchemaUpload } from "@/components/firestore-schema-upload";
+import { FirestoreSchemaViewer } from "@/components/firestore-schema-viewer";
+import { FirestorePublishSheet } from "@/components/firestore-publish-sheet";
+import type { FirestoreSchema } from "@/types/firestore-schema";
 
 export default function Home() {
   const { theme, toggleTheme } = useTheme();
@@ -87,11 +98,21 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [restored, setRestored] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [aiAssistantOpen, setAIAssistantOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [firestoreAssistantOpen, setFirestoreAssistantOpen] = useState(false);
   const [flowchartOpen, setFlowchartOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
-  const [firebaseDocsOpen, setFirebaseDocsOpen] = useState(false);
+  const [publishedDocsOpen, setPublishedDocsOpen] = useState(false);
+  const [connectDbOpen, setConnectDbOpen] = useState(false);
+  const [externalDbConnected, setExternalDbConnected] = useState(false);
+  const [dbDocMode, setDbDocMode] = useState<"upload" | "viewer" | null>(null);
+  const [firestoreSchema, setFirestoreSchema] = useState<FirestoreSchema | null>(null);
+  const [firestorePublishOpen, setFirestorePublishOpen] = useState(false);
+
+  // Check external DB connection status on mount and when it changes
+  useEffect(() => {
+    setExternalDbConnected(isExternalDbConnected());
+  }, []);
 
   // Restore current collection from browser storage on mount
   useEffect(() => {
@@ -110,6 +131,14 @@ export default function Home() {
 
   const handleFileLoaded = useCallback((json: unknown, _fileName: string) => {
     try {
+      // Check if this is a Firestore schema document
+      const payload = json as Record<string, unknown>;
+      if (payload && payload.type === "firestore-schema" && payload.schema) {
+        setFirestoreSchema(payload.schema as FirestoreSchema);
+        setDbDocMode("viewer");
+        return;
+      }
+
       const parsed = parsePostmanCollection(json as PostmanCollection);
       const jsonStr = JSON.stringify(json);
       setStoredCurrent(jsonStr);
@@ -132,6 +161,28 @@ export default function Home() {
     setCollection(null);
     setSelectedEndpoint(null);
   }, []);
+
+  // Hidden file input for replacing the current collection JSON
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const handleReplaceFile = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const json = JSON.parse(ev.target?.result as string);
+          handleFileLoaded(json, file.name);
+        } catch {
+          console.error("Invalid JSON file");
+        }
+      };
+      reader.readAsText(file);
+      // Reset so the same file can be re-selected
+      e.target.value = "";
+    },
+    [handleFileLoaded]
+  );
 
   const handleLoadFromHistory = useCallback((entry: HistoryEntry) => {
     const raw = loadFromHistory(entry.id);
@@ -162,6 +213,21 @@ export default function Home() {
     downloadMarkdown(md, `${slug(baseName)}-folder.md`);
   }, [mode]);
 
+  const handleExportUserGuidePdf = useCallback(() => {
+    if (!collection) return;
+    exportUserGuidePdf(collection);
+  }, [collection]);
+
+  const handleExportUserGuideDocx = useCallback(() => {
+    if (!collection) return;
+    exportUserGuideDocx(collection);
+  }, [collection]);
+
+  const handleExportUserGuideMd = useCallback(() => {
+    if (!collection) return;
+    exportUserGuideMd(collection);
+  }, [collection]);
+
   const history = restored ? getHistory() : [];
 
   const flatFolders = useMemo(() => {
@@ -177,6 +243,96 @@ export default function Home() {
     return flat;
   }, [collection]);
 
+  // If viewing Firestore schema documentation
+  if (firestoreSchema && dbDocMode === "viewer") {
+    return (
+      <>
+        <FirestoreSchemaViewer
+          schema={firestoreSchema}
+          onReset={() => {
+            setFirestoreSchema(null);
+            setDbDocMode(null);
+          }}
+          onPublish={user ? () => setFirestorePublishOpen(true) : undefined}
+          onRescan={() => {
+            setFirestoreSchema(null);
+            setDbDocMode("upload");
+          }}
+          onEditConnection={() => setConnectDbOpen(true)}
+          onOpenPublishedDocs={() => setPublishedDocsOpen(true)}
+          onOpenAssistant={() => setFirestoreAssistantOpen(true)}
+        />
+        <FirestoreAssistantSheet
+          open={firestoreAssistantOpen}
+          onOpenChange={setFirestoreAssistantOpen}
+          schema={firestoreSchema}
+        />
+        {user && (
+          <FirestorePublishSheet
+            open={firestorePublishOpen}
+            onOpenChange={setFirestorePublishOpen}
+            schema={firestoreSchema}
+            userId={user.uid}
+            userEmail={user.email}
+          />
+        )}
+        <FirebaseDocsSheet
+          open={publishedDocsOpen}
+          onOpenChange={setPublishedDocsOpen}
+          onLoadCollection={handleFileLoaded}
+        />
+        <ConnectDbSheet
+          open={connectDbOpen}
+          onOpenChange={setConnectDbOpen}
+          onConnectionChange={() => setExternalDbConnected(isExternalDbConnected())}
+        />
+      </>
+    );
+  }
+
+  // If in db-doc upload mode (scanning)
+  if (dbDocMode === "upload" && !collection) {
+    return (
+      <>
+        <div className="flex min-h-screen items-center justify-center p-6">
+          <div className="w-full max-w-2xl">
+            <FirestoreSchemaUpload
+              onSchemaLoaded={(schema) => {
+                setFirestoreSchema(schema);
+                setDbDocMode("viewer");
+              }}
+            />
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground text-xs"
+                onClick={() => setDbDocMode(null)}
+              >
+                <ChevronLeft className="h-3 w-3 mr-1" />
+                Back
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs gap-1.5"
+                onClick={() => setConnectDbOpen(true)}
+              >
+                <Database className="h-3 w-3" />
+                {externalDbConnected ? "Edit credentials" : "Connect database"}
+              </Button>
+            </div>
+          </div>
+        </div>
+        <ConnectDbSheet
+          open={connectDbOpen}
+          onOpenChange={setConnectDbOpen}
+          onConnectionChange={() => setExternalDbConnected(isExternalDbConnected())}
+        />
+      </>
+    );
+  }
+
   // If no collection is loaded (and we've checked storage), show the upload screen
   if (!collection) {
     return (
@@ -185,14 +341,20 @@ export default function Home() {
           onFileLoaded={handleFileLoaded}
           history={history}
           onSelectFromHistory={handleLoadFromHistory}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenFirebaseDocs={() => setFirebaseDocsOpen(true)}
+          onOpenPublishedDocs={() => setPublishedDocsOpen(true)}
+          onOpenConnectDb={() => setConnectDbOpen(true)}
+          onDocumentDb={() => setDbDocMode("upload")}
+          isExternalDbConnected={externalDbConnected}
         />
-        <AISettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} />
         <FirebaseDocsSheet
-          open={firebaseDocsOpen}
-          onOpenChange={setFirebaseDocsOpen}
+          open={publishedDocsOpen}
+          onOpenChange={setPublishedDocsOpen}
           onLoadCollection={handleFileLoaded}
+        />
+        <ConnectDbSheet
+          open={connectDbOpen}
+          onOpenChange={setConnectDbOpen}
+          onConnectionChange={() => setExternalDbConnected(isExternalDbConnected())}
         />
       </>
     );
@@ -200,90 +362,76 @@ export default function Home() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      {/* Top Bar */}
-      <header className="flex h-14 items-center gap-3 border-b px-4 shrink-0">
-        {/* Mobile menu */}
-        <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="md:hidden h-8 w-8">
-              <Menu className="h-4 w-4" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-72 p-0">
-            <SheetTitle className="sr-only">Navigation</SheetTitle>
-            <div className="flex h-full flex-col">
-              <div className="flex h-14 items-center gap-2 border-b px-4">
-                <FileJson className="h-4 w-4" />
-                <span className="text-sm font-semibold truncate">
-                  {collection.name}
-                </span>
+      {/* Top Bar — clean 3-zone layout: Left (nav) | Center (search) | Right (actions) */}
+      <header className="flex h-12 items-center gap-2 border-b px-3 shrink-0">
+        {/* ── Left zone: sidebar + collection name ── */}
+        <div className="flex items-center gap-1.5 min-w-0 shrink-0">
+          {/* Mobile menu */}
+          <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden h-8 w-8">
+                <Menu className="h-4 w-4" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-72 p-0">
+              <SheetTitle className="sr-only">Navigation</SheetTitle>
+              <div className="flex h-full flex-col">
+                <div className="flex h-14 items-center gap-2 border-b px-4">
+                  <FileJson className="h-4 w-4" />
+                  <span className="text-sm font-semibold truncate">
+                    {collection.name}
+                  </span>
+                </div>
+                <SidebarNav
+                  folderTree={collection.folderTree}
+                  selectedEndpoint={selectedEndpoint}
+                  onSelectEndpoint={handleSelectEndpoint}
+                  allEndpoints={collection.endpoints}
+                />
               </div>
-              <SidebarNav
-                folderTree={collection.folderTree}
-                selectedEndpoint={selectedEndpoint}
-                onSelectEndpoint={handleSelectEndpoint}
-                allEndpoints={collection.endpoints}
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
+            </SheetContent>
+          </Sheet>
 
-        {/* Desktop sidebar toggle */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="hidden md:flex h-8 w-8"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-            >
-              {sidebarOpen ? (
-                <PanelLeftClose className="h-4 w-4" />
-              ) : (
-                <PanelLeft className="h-4 w-4" />
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {sidebarOpen ? "Close sidebar" : "Open sidebar"}
-          </TooltipContent>
-        </Tooltip>
+          {/* Desktop sidebar toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden md:flex h-8 w-8"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+          >
+            {sidebarOpen ? (
+              <PanelLeftClose className="h-4 w-4" />
+            ) : (
+              <PanelLeft className="h-4 w-4" />
+            )}
+          </Button>
 
-        {/* App name */}
-        <div className="flex items-center gap-2">
-          <FileJson className="h-4 w-4 hidden md:block" />
-          <span className="text-sm font-semibold hidden sm:block">
-            {collection.name}
-          </span>
+          {/* Collection name */}
+          <div className="hidden sm:flex items-center gap-1.5 min-w-0">
+            <FileJson className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-sm font-medium truncate max-w-[200px]">
+              {collection.name}
+            </span>
+          </div>
         </div>
 
-        <div className="flex-1 flex justify-center px-4">
+        {/* ── Center zone: search ── */}
+        <div className="flex-1 flex justify-center px-2">
           <SearchCommand
             endpoints={collection.endpoints}
             folders={flatFolders}
             onSelect={(item) => {
               if ("method" in item) {
-                // It's an endpoint
                 handleSelectEndpoint(item as ParsedEndpoint);
               } else {
-                // It's a folder
                 setSelectedEndpoint(null);
                 setMobileSidebarOpen(false);
                 setTimeout(() => {
-                  // Find ID to scroll to. CollectionOverview recursively renders folders with IDs:
-                  // id={`folder-${folder.path.length > 0 ? folder.path.join("-") : folder.name}`}
-
-                  // For root folder: path is empty. item.name is mostly correct but in FolderNode path is empty array.
-                  // For nested folder: path is ["Root", "Sub"]. Join to "Root-Sub".
-
                   const suffix = item.path.length > 0 ? item.path.join("-") : item.name;
                   const id = `folder-${suffix}`;
-
                   const el = document.getElementById(id);
                   if (el) {
                     el.scrollIntoView({ behavior: "smooth", block: "start" });
-                  } else {
-                    console.warn("Could not find element with id:", id);
                   }
                 }, 100);
               }
@@ -291,170 +439,48 @@ export default function Home() {
           />
         </div>
 
-        {/* Mode Toggle */}
-        <div className="flex items-center gap-1 rounded-lg border p-0.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={mode === "dev" ? "default" : "ghost"}
-                size="sm"
-                className="h-7 gap-1.5 text-xs px-3"
-                onClick={() => setMode("dev")}
-              >
-                <Code2 className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Dev</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              Developer Mode — Technical API documentation
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={mode === "user" ? "default" : "ghost"}
-                size="sm"
-                className="h-7 gap-1.5 text-xs px-3"
-                onClick={() => setMode("user")}
-              >
-                <BookOpen className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">User</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              User Mode — Plain English user manual
-            </TooltipContent>
-          </Tooltip>
-        </div>
-
-        {/* AI Settings (API key) */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setSettingsOpen(true)}
-              aria-label="AI settings / API key"
-            >
-              <KeyRound className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            AI settings & API key
-          </TooltipContent>
-        </Tooltip>
-
-        {/* AI Assistant */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setAIAssistantOpen(true)}
-              aria-label="AI Assistant"
-            >
-              <Bot className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            AI Assistant
-          </TooltipContent>
-        </Tooltip>
-
-        {/* Flowchart */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setFlowchartOpen(true)}
-              aria-label="Flowchart"
-            >
-              <GitBranch className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Flowchart
-          </TooltipContent>
-        </Tooltip>
-
-        {/* Auth: Sign in / User menu (always visible; login page shows setup if Firebase not configured) */}
-        {!authLoading && (
-          <div className="flex items-center">
-            {user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-2 h-8 max-w-[160px]"
-                    aria-label="Account menu"
-                  >
-                    <User className="h-4 w-4 shrink-0" />
-                    <span className="truncate text-xs">
-                      {user.displayName || user.email || "Account"}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuPortal>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel className="font-normal">
-                      <div className="flex flex-col">
-                        {user.displayName && (
-                          <span className="font-medium">{user.displayName}</span>
-                        )}
-                        <span className="text-xs text-muted-foreground">{user.email}</span>
-                      </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href="/settings">
-                        <Settings className="h-4 w-4 mr-2" />
-                        Profile &amp; Settings
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/docs">
-                        <CloudUpload className="h-4 w-4 mr-2" />
-                        Published docs
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => signOut()}>
-                      <LogOut className="h-4 w-4 mr-2" />
-                      Sign out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenuPortal>
-              </DropdownMenu>
-            ) : (
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
-                  <Link href="/login">Sign in</Link>
+        {/* ── Right zone: mode toggle + compact actions ── */}
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Mode Toggle */}
+          <div className="flex items-center gap-0.5 rounded-md border p-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={mode === "dev" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-6 gap-1 text-[11px] px-2"
+                  onClick={() => setMode("dev")}
+                >
+                  <Code2 className="h-3 w-3" />
+                  <span className="hidden sm:inline">Dev</span>
                 </Button>
-                <Button variant="default" size="sm" className="h-8 text-xs" asChild>
-                  <Link href="/signup">Sign up</Link>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Developer mode</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={mode === "user" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-6 gap-1 text-[11px] px-2"
+                  onClick={() => setMode("user")}
+                >
+                  <BookOpen className="h-3 w-3" />
+                  <span className="hidden sm:inline">User</span>
                 </Button>
-              </div>
-            )}
+              </TooltipTrigger>
+              <TooltipContent side="bottom">User-friendly mode</TooltipContent>
+            </Tooltip>
           </div>
-        )}
 
-        {/* Theme toggle + design badge (Nova / Neutral style) */}
-        <div className="flex items-center gap-1.5 rounded-lg border px-2 py-1">
-          <span className="hidden sm:inline text-[10px] uppercase tracking-wider text-muted-foreground mr-0.5">
-            Theme
-          </span>
+          {/* Theme toggle (icon only) */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7"
+                className="h-8 w-8"
                 onClick={toggleTheme}
-                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
               >
                 {theme === "dark" ? (
                   <Sun className="h-3.5 w-3.5" />
@@ -467,127 +493,175 @@ export default function Home() {
               {theme === "dark" ? "Light mode" : "Dark mode"}
             </TooltipContent>
           </Tooltip>
-          <span className="hidden sm:inline text-[10px] text-muted-foreground font-medium">
-            {theme === "dark" ? "Dark" : "Light"}
-          </span>
-        </div>
 
-        {/* History */}
-        {history.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                aria-label="Recent collections"
-              >
-                <History className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuContent align="end" className="max-h-[min(60vh,400px)] overflow-y-auto">
-                <DropdownMenuLabel>Recent collections</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {history
-                  .filter((e) => e.name !== collection.name)
-                  .map((entry) => (
-                    <DropdownMenuItem
-                      key={entry.id}
-                      onClick={() => handleLoadFromHistory(entry)}
-                    >
-                      <FileJson className="h-3.5 w-3.5" />
-                      {entry.name}
-                    </DropdownMenuItem>
-                  ))}
-                {history.filter((e) => e.name !== collection.name).length === 0 && (
-                  <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-                    No other recent collections
-                  </div>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenuPortal>
-          </DropdownMenu>
-        )}
-
-        {/* Browse Firebase Docs */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setFirebaseDocsOpen(true)}
-              aria-label="Browse Firebase docs"
-            >
-              <Cloud className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Browse Firebase docs
-          </TooltipContent>
-        </Tooltip>
-
-        {/* Publish to Firebase (when signed in) */}
-        {user && (
+          {/* ── Assistant button ── */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setPublishOpen(true)}
-                aria-label="Publish to Firebase"
+                size="sm"
+                className="h-8 gap-1.5 text-xs px-2.5"
+                onClick={() => setAssistantOpen(true)}
               >
-                <CloudUpload className="h-4 w-4" />
+                <Sparkles className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Assistant</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">
-              Publish docs to Firebase (public or private)
-            </TooltipContent>
+            <TooltipContent side="bottom">Generate prompts & code</TooltipContent>
           </Tooltip>
-        )}
 
-        {/* Export full doc as .md */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => {
-                const md = collectionToMarkdown(collection, mode);
-                downloadMarkdown(md, `${slug(collection.name)}-api-docs.md`);
-              }}
-            >
-              <FileDown className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Export full documentation as .md
-          </TooltipContent>
-        </Tooltip>
+          {/* ── Actions menu (everything else) ── */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuContent align="end" className="w-56">
+                {/* Collection actions */}
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">Collection</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => {
+                  const md = collectionToMarkdown(collection, mode);
+                  downloadMarkdown(md, `${slug(collection.name)}-api-docs.md`);
+                }}>
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Export as Markdown
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => replaceInputRef.current?.click()}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Update collection JSON
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleReset}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload new collection
+                </DropdownMenuItem>
 
-        {/* Upload new */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={handleReset}
-            >
-              <Upload className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Upload new collection</TooltipContent>
-        </Tooltip>
+                {/* Publishing */}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">Publishing</DropdownMenuLabel>
+                {user && (
+                  <DropdownMenuItem onClick={() => setPublishOpen(true)}>
+                    <CloudUpload className="h-4 w-4 mr-2" />
+                    Publish docs
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => setPublishedDocsOpen(true)}>
+                  <Cloud className="h-4 w-4 mr-2" />
+                  Browse published docs
+                </DropdownMenuItem>
+
+                {/* Database */}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">Database</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setConnectDbOpen(true)}>
+                  <Database className="h-4 w-4 mr-2" />
+                  {externalDbConnected ? "Edit connection" : "Connect database"}
+                </DropdownMenuItem>
+                {externalDbConnected && (
+                  <DropdownMenuItem onClick={() => setDbDocMode("upload")}>
+                    <ScanSearch className="h-4 w-4 mr-2" />
+                    Document database
+                  </DropdownMenuItem>
+                )}
+
+                {/* Tools */}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">Tools</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setFlowchartOpen(true)}>
+                  <GitBranch className="h-4 w-4 mr-2" />
+                  Flowchart
+                </DropdownMenuItem>
+
+                {/* History */}
+                {history.length > 0 && history.filter((e) => e.name !== collection.name).length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">Recent</DropdownMenuLabel>
+                    {history
+                      .filter((e) => e.name !== collection.name)
+                      .slice(0, 5)
+                      .map((entry) => (
+                        <DropdownMenuItem
+                          key={entry.id}
+                          onClick={() => handleLoadFromHistory(entry)}
+                        >
+                          <History className="h-4 w-4 mr-2" />
+                          <span className="truncate">{entry.name}</span>
+                        </DropdownMenuItem>
+                      ))}
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenu>
+
+          {/* ── User menu / Sign in ── */}
+          {!authLoading && (
+            <>
+              {user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label="Account"
+                    >
+                      <User className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuPortal>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuLabel className="font-normal">
+                        <div className="flex flex-col">
+                          {user.displayName && (
+                            <span className="font-medium text-sm">{user.displayName}</span>
+                          )}
+                          <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+                        </div>
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild>
+                        <Link href="/settings">
+                          <Settings className="h-4 w-4 mr-2" />
+                          Settings
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/docs">
+                          <Cloud className="h-4 w-4 mr-2" />
+                          My published docs
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => signOut()}>
+                        <LogOut className="h-4 w-4 mr-2" />
+                        Sign out
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenuPortal>
+                </DropdownMenu>
+              ) : (
+                <Button variant="default" size="sm" className="h-7 text-xs px-3" asChild>
+                  <Link href="/login">Sign in</Link>
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+        <input
+          ref={replaceInputRef}
+          type="file"
+          accept=".json"
+          onChange={handleReplaceFile}
+          className="hidden"
+        />
       </header>
 
-      <AISettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} />
       <FirebaseDocsSheet
-        open={firebaseDocsOpen}
-        onOpenChange={setFirebaseDocsOpen}
+        open={publishedDocsOpen}
+        onOpenChange={setPublishedDocsOpen}
         onLoadCollection={handleFileLoaded}
       />
       {user && (
@@ -599,23 +673,22 @@ export default function Home() {
           userEmail={user.email ?? null}
         />
       )}
-      <AIAssistantSheet
-        open={aiAssistantOpen}
-        onOpenChange={setAIAssistantOpen}
+      <ConnectDbSheet
+        open={connectDbOpen}
+        onOpenChange={setConnectDbOpen}
+        onConnectionChange={() => setExternalDbConnected(isExternalDbConnected())}
+      />
+      <AssistantSheet
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
         collection={collection}
-        onOpenSettings={() => {
-          setAIAssistantOpen(false);
-          setSettingsOpen(true);
-        }}
+        selectedEndpoint={selectedEndpoint}
       />
       <FlowchartSheet
         open={flowchartOpen}
         onOpenChange={setFlowchartOpen}
         collection={collection}
-        onOpenSettings={() => {
-          setFlowchartOpen(false);
-          setSettingsOpen(true);
-        }}
+        onOpenSettings={() => setFlowchartOpen(false)}
       />
 
       {/* Main Content */}
@@ -677,6 +750,9 @@ export default function Home() {
                 mode={mode}
                 onSelectEndpoint={handleSelectEndpoint}
                 onExportFolder={handleExportFolder}
+                onExportUserGuidePdf={handleExportUserGuidePdf}
+                onExportUserGuideDocx={handleExportUserGuideDocx}
+                onExportUserGuideMd={handleExportUserGuideMd}
               />
             )}
           </div>

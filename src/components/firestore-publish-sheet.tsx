@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Upload, Loader2, Globe, Lock, CheckCircle, Database, Cloud } from "lucide-react";
+import { Upload, Loader2, Globe, Lock, CheckCircle, Cloud, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,29 +15,29 @@ import {
   SheetDescription,
   SheetFooter,
 } from "@/components/ui/sheet";
-import { getStoredCurrent } from "@/lib/collection-storage";
 import { publishDoc, type PublishVisibility } from "@/lib/published-docs";
 import { publishToExternalDb } from "@/lib/external-db-docs";
 import { isExternalDbConnected } from "@/lib/external-db-settings";
-import type { ParsedCollection } from "@/lib/postman-parser";
+import { schemaToMarkdown } from "@/lib/firestore-schema-export";
+import type { FirestoreSchema } from "@/types/firestore-schema";
 
 type PublishTarget = "platform" | "external";
 
-interface PublishSheetProps {
+interface FirestorePublishSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  collection: ParsedCollection;
+  schema: FirestoreSchema;
   userId: string;
   userEmail: string | null;
 }
 
-export function PublishSheet({
+export function FirestorePublishSheet({
   open,
   onOpenChange,
-  collection,
+  schema,
   userId,
   userEmail,
-}: PublishSheetProps) {
+}: FirestorePublishSheetProps) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -50,42 +50,51 @@ export function PublishSheet({
 
   useEffect(() => {
     if (open) {
-      setName(collection.name);
-      setDescription("");
+      setName(`${schema.projectName} — Database Docs`);
+      setDescription(
+        `${schema.collections.length} collections, ${schema.indexes.length} indexes`
+      );
       setVisibility("private");
       setError(null);
       setPublishedId(null);
       setExternalConnected(isExternalDbConnected());
       setTarget("platform");
     }
-  }, [open, collection.name]);
+  }, [open, schema]);
 
   const handlePublish = async () => {
-    const raw = getStoredCurrent();
-    if (!raw) {
-      setError("No collection data to publish. Upload or load a collection first.");
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
+      // Generate the full markdown from the schema
+      const markdown = schemaToMarkdown(schema);
+
+      // Wrap the markdown in a JSON envelope that looks like a doc payload
+      // so it can be displayed in the published docs viewer
+      const docPayload = JSON.stringify({
+        type: "firestore-schema",
+        projectName: schema.projectName,
+        markdown,
+        schema,
+      });
+
       if (target === "external") {
         await publishToExternalDb({
-          name: name.trim() || collection.name,
+          name: name.trim() || `${schema.projectName} DB Docs`,
           description: description.trim(),
-          collectionJson: raw,
-          endpointCount: collection.totalRequests,
-          folderCount: collection.totalFolders,
+          collectionJson: docPayload,
+          endpointCount: schema.collections.length,
+          folderCount: schema.indexes.length,
         });
         setPublishedId("external");
       } else {
         const id = await publishDoc(userId, userEmail, {
-          name: name.trim() || collection.name,
+          name: name.trim() || `${schema.projectName} DB Docs`,
           description: description.trim(),
           visibility,
-          collectionJson: raw,
-          endpointCount: collection.totalRequests,
-          folderCount: collection.totalFolders,
+          collectionJson: docPayload,
+          endpointCount: schema.collections.length,
+          folderCount: schema.indexes.length,
         });
         setPublishedId(id);
       }
@@ -109,12 +118,12 @@ export function PublishSheet({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" />
-            Publish docs
+            Publish database docs
           </SheetTitle>
           <SheetDescription>
             {target === "external"
-              ? "Save this API documentation to your connected database."
-              : "Save this API documentation to the cloud. Choose public (open to everyone) or private (requires sign-in to view)."}
+              ? "Save your database documentation to your connected database."
+              : "Publish your database documentation to the cloud. Choose public or private visibility."}
           </SheetDescription>
         </SheetHeader>
 
@@ -127,13 +136,13 @@ export function PublishSheet({
               </div>
               <p className="text-sm text-muted-foreground">
                 {publishedId === "external"
-                  ? "Your doc is saved to your database."
-                  : "Your doc is saved. Share the link or view it now."}
+                  ? "Your database docs are saved to your database."
+                  : "Your database docs are published. Share the link or view them now."}
               </p>
               {publishedId !== "external" && (
                 <div className="flex gap-2">
                   <Button onClick={handleView} size="sm">
-                    View doc
+                    View docs
                   </Button>
                   <Button variant="outline" size="sm" asChild>
                     <Link href="/docs">My published docs</Link>
@@ -186,7 +195,7 @@ export function PublishSheet({
                   id="publish-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="API documentation name"
+                  placeholder="Database documentation name"
                   disabled={busy}
                 />
               </div>
@@ -199,6 +208,19 @@ export function PublishSheet({
                   placeholder="Short description"
                   disabled={busy}
                 />
+              </div>
+
+              {/* Summary */}
+              <div className="rounded-md bg-muted p-3 text-sm space-y-1">
+                <p className="font-medium">What will be published:</p>
+                <ul className="text-muted-foreground text-xs space-y-0.5 ml-4 list-disc">
+                  <li>{schema.collections.length} collection{schema.collections.length !== 1 ? "s" : ""} with field schemas</li>
+                  {schema.indexes.length > 0 && (
+                    <li>{schema.indexes.length} composite index{schema.indexes.length !== 1 ? "es" : ""}</li>
+                  )}
+                  {schema.rawRules && <li>Security rules</li>}
+                  <li>Full markdown documentation</li>
+                </ul>
               </div>
 
               {/* Visibility — only for platform publishing */}
@@ -231,8 +253,8 @@ export function PublishSheet({
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {visibility === "private"
-                      ? "Anyone with the link can view this doc after signing in."
-                      : "Anyone with the link can view this doc — no sign-in required."}
+                      ? "Anyone with the link can view after signing in."
+                      : "Anyone with the link can view — no sign-in required."}
                   </p>
                 </div>
               )}

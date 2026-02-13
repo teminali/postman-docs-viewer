@@ -15,9 +15,18 @@ import {
   BookOpen,
   Code2,
   FileDown,
+  FileText,
+  FileType,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface FolderSectionProps {
   folder: FolderNode;
@@ -72,9 +81,10 @@ function FolderSection({
               size="sm"
               className="shrink-0 h-7 text-xs gap-1.5"
               onClick={() => onExportFolder(folder)}
+              title="Export as Markdown"
             >
               <FileDown className="h-3.5 w-3.5" />
-              <span className="sr-only">Export</span>
+              <span className="sr-only">Export Markdown</span>
             </Button>
           )}
         </div>
@@ -141,6 +151,10 @@ interface CollectionOverviewProps {
   mode: ViewMode;
   onSelectEndpoint: (endpoint: ParsedEndpoint) => void;
   onExportFolder?: (folder: FolderNode) => void;
+  /** User Guide exports (only shown in user mode) */
+  onExportUserGuidePdf?: () => void;
+  onExportUserGuideDocx?: () => void;
+  onExportUserGuideMd?: () => void;
 }
 
 export function CollectionOverview({
@@ -148,6 +162,9 @@ export function CollectionOverview({
   mode,
   onSelectEndpoint,
   onExportFolder,
+  onExportUserGuidePdf,
+  onExportUserGuideDocx,
+  onExportUserGuideMd,
 }: CollectionOverviewProps) {
   const isDevMode = mode === "dev";
 
@@ -155,15 +172,48 @@ export function CollectionOverview({
     <div className="space-y-6 max-w-4xl">
       {/* Header */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          {isDevMode ? (
-            <Code2 className="h-5 w-5 text-muted-foreground" />
-          ) : (
-            <BookOpen className="h-5 w-5 text-muted-foreground" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {isDevMode ? (
+              <Code2 className="h-5 w-5 text-muted-foreground" />
+            ) : (
+              <BookOpen className="h-5 w-5 text-muted-foreground" />
+            )}
+            <Badge variant="outline" className="text-xs">
+              {isDevMode ? "Developer Reference" : "User Guide"}
+            </Badge>
+          </div>
+          {!isDevMode && (onExportUserGuidePdf || onExportUserGuideDocx || onExportUserGuideMd) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+                  <FileDown className="h-3.5 w-3.5" />
+                  Export Guide
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {onExportUserGuidePdf && (
+                  <DropdownMenuItem onClick={onExportUserGuidePdf}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Export as PDF
+                  </DropdownMenuItem>
+                )}
+                {onExportUserGuideDocx && (
+                  <DropdownMenuItem onClick={onExportUserGuideDocx}>
+                    <FileType className="h-4 w-4 mr-2" />
+                    Export as Word
+                  </DropdownMenuItem>
+                )}
+                {onExportUserGuideMd && (
+                  <DropdownMenuItem onClick={onExportUserGuideMd}>
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Export as Markdown
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
-          <Badge variant="outline" className="text-xs">
-            {isDevMode ? "Developer Reference" : "User Guide"}
-          </Badge>
         </div>
         <h1 className="text-3xl font-bold tracking-tight">
           {collection.name}

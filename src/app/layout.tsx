@@ -26,7 +26,7 @@ const themeScript = `
 `;
 
 export const metadata: Metadata = {
-  title: "Postman Docs Viewer — API Documentation Made Simple",
+  title: "NexusDocer — API Documentation Made Simple",
   description:
     "Upload your Postman collection and get beautiful, searchable API documentation. Switch between Developer and User modes.",
 };
